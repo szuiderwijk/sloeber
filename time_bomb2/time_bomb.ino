@@ -9,7 +9,6 @@ const int buzzerPin = A5;
 Buzzer myBuzzer;
 
 LiquidCrystal lcd(12, 8, 7, 4, 3, 2);
-long setTime = 0;
 unsigned long int startTime = 0;
 unsigned long int endTime = 0;
 bool pressedLastCycle = false;
@@ -20,6 +19,12 @@ const long SECOND = 1000;
 const long MINUTE = SECOND * 60L;
 const long TEN_MINUTES = MINUTE * 10;
 const long HOUR = MINUTE * 60;
+
+
+/* consts define which count down time to use, this can be a default, or manually configurable */
+const long DEFAULT_BOMB_TIME = HOUR + (15 * MINUTE);
+const bool MANUAL_TIME_SELECT = false;  // The default is used when this const is set to false
+long countDownTime = MANUAL_TIME_SELECT ? 0: HOUR;
 
 // number of attempts, NOTE: cannot be const since the number is decreased every attempt
 int pogingen = 5;
@@ -91,6 +96,7 @@ void setup() {
 	analogWrite(wire3, E3->outputValue);
 	analogWrite(wire4, E4->outputValue);
 	analogWrite(wire5, E5->outputValue);
+
 }
 
 void startTimer() {
@@ -113,12 +119,12 @@ void handleInitState() {
 		Serial.println("Button was pressed once");
 		// button was pressed once, increase timer
 		lcd.setCursor(2, 0);
-		setTime += TEN_MINUTES;
-		if (setTime > 3 * HOUR) {
-			setTime = 0;
+		countDownTime += TEN_MINUTES;
+		if (countDownTime > 3 * HOUR) {
+			countDownTime = 0;
 		}
-		int secondhours = setTime / HOUR;
-		int secondminutes = (setTime % HOUR) / MINUTE;
+		int secondhours = countDownTime / HOUR;
+		int secondminutes = (countDownTime % HOUR) / MINUTE;
 		lcd.print(secondminutes);
 		lcd.setCursor(0, 0);
 		lcd.print(secondhours);
@@ -244,6 +250,7 @@ boolean checkWires() {
 	printVal(val5);
 
 	//Serial.println("");
+	// 1 - 5 from left to right = red, green, yellow, black, white
 	return checkWire(val1, E5) && checkWire(val2, E4) && checkWire(val3, E2)
 			&& checkWire(val4, E1) && checkWire(val5, E3);
 }
@@ -268,28 +275,33 @@ void explode() {
 
 void dismantle() {
 	Serial.println("Dismantle");
+	lcd.clear();
 	lcd.setCursor(0, 0);
-	lcd.print("GEWONNEN!       ");
-	lcd.setCursor(0, 1);
-	lcd.print("                ");
+	lcd.print("BOM ONTMANTELD! ");
+
 	for (int i = 0; i < 3; i++) {
 		myBuzzer.playMelody(2, correctTones, noteDurations);
 		myBuzzer.singleTone(NOTE_D7, 100);
 		delay(200);
 	}
 	bombState = EBombState::DISMANTLED;
+	delay(5000);
+	lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Vernietig de");
+    lcd.setCursor(0, 1);
+    lcd.print("  plannen!!!  ");
 	done();
 }
 
 void handleRunningState() {
 
 	// Calculate the amount of milliseconds left
-	long milliseconds = setTime - (millis() - startTime);
+	long milliseconds = countDownTime - (millis() - startTime);
 	int hours = milliseconds / HOUR;
 	int minutes = (milliseconds % HOUR) / MINUTE;
 	int seconds = (milliseconds % MINUTE) / SECOND;
 	int tenmils = (milliseconds % SECOND) / 10;
-	int procent = milliseconds * 100 / setTime + 1;
 
 	checkTimerBuzz(milliseconds);
 
@@ -315,9 +327,9 @@ void handleRunningState() {
 				//Serial.println("!poging!");
 				myBuzzer.playMelody(2, incorrectTones, noteDurations);
 				delay(1000);
-				setTime -= MINUTE;
+				countDownTime -= MINUTE;
 				if (pogingen < 1) {
-					setTime = 0;
+					countDownTime = 0;
 				}
 			}
 		}
@@ -330,7 +342,13 @@ void handleRunningState() {
 void loop() {
 	switch (clockState) {
 	case INIT:
-		handleInitState();
+	    // NOTE: MANUAL_TIME_SELECT defines if the user can manually set the count down time
+	    // the default time
+	    if (MANUAL_TIME_SELECT) {
+	        handleInitState();
+	    } else {
+	        startTimer();
+	    }
 		break;
 	case RUNNING:
 		if (bombState == EBombState::SHARP) {
